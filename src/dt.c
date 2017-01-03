@@ -96,22 +96,28 @@ int main(int argc, char* argv[]) {
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 	MPI_Comm_size(MPI_COMM_WORLD, &P);
 
+	MPI_Barrier(MPI_COMM_WORLD);
 	t[1] = MPI_Wtime();
 
 	input(inputImg);
 	
+	MPI_Barrier(MPI_COMM_WORLD);
 	t[2] = MPI_Wtime();
+
 	infinity = M*N;
 	firstPhase();
 
+	MPI_Barrier(MPI_COMM_WORLD);
 	t[3] = MPI_Wtime();
 
 	comFunc();
 	
+	MPI_Barrier(MPI_COMM_WORLD);
 	t[4] = MPI_Wtime();
 
 	int max = secondPhase ();
 
+	MPI_Barrier(MPI_COMM_WORLD);
 	t[5] = MPI_Wtime();
 
 
@@ -119,6 +125,7 @@ int main(int argc, char* argv[]) {
 		output(outputImg, b, max);
 	}
 
+	MPI_Barrier(MPI_COMM_WORLD);
 	t[6] = MPI_Wtime();
 	
 	if (rank==0)
@@ -132,27 +139,35 @@ inline void firstPhase() {
 	int x, y, m, n;
 	m = M/P;
 	n = N;
+
+	#pragma omp parallel for schedule(static)
 	for ( x=0; x<m; x++ )
 		a[x] = infinity - a[x]*infinity;
 
-	for ( y=1; y<n; y++ )
+	for ( y=1; y<n; y++ ) {
+		#pragma omp parallel for schedule(static)
 		for ( x=0; x<m; x++ ) {
 			int aa = a[x+(y-1)*m];
 			a[x+y*m] = 1 + aa - a[x+y*m] * ( aa+1 );
 		}
+	}
 
-	for ( y=n-2; y>=0; y-- )
+	for ( y=n-2; y>=0; y-- ) {
+		#pragma omp parallel for schedule(static)
 		for ( x=0; x<m; x++ ) {
 			int b = a[x+(y+1)*m];
 			if ( b < a[x+y*m] )
 				a[x+y*m] = b+1;
 		}
+	}
 }
 
 inline int secondPhase() {
 	int x, y, n, m, max=0;
 	m = M;
 	n = N/P;
+
+	#pragma omp parallel for private(x) schedule(dynamic) reduction(max:max)
 	for(y=0; y<n; y++) {
 		int q=0;
 		int s[m], t[m];
@@ -229,6 +244,7 @@ inline void allToAll() {
 	MPI_Alltoall(a, blockSize, MPI_INT, b, blockSize, MPI_INT, MPI_COMM_WORLD);// Troca os blocos entre processos
 
 	for (i=0; i<P; i++) {
+		#pragma omp parallel for schedule(dynamic)
 		for (j=0; j<blockHeight; j++){
 			int OffsetDest = ( (j*M) + (i*blockWidth) ); // Calcula onde vai escrever
 			int OffsetSrc = ( (i*blockSize) + (j*blockWidth) ); // Calcula onde vai ler
@@ -252,6 +268,7 @@ inline void allToAllCompress() {
 	int *dataSend = (int*) calloc(P*3, sizeof(int));
 	int *dataRecv = (int*) calloc(P*3, sizeof(int));
 
+	#pragma omp parallel for private(j) schedule(dynamic)
 	for (i=0; i<P; i++) {
 		//find block max
 		for (j=i*blockSize; j<(i+1)*blockSize; j++)
@@ -280,11 +297,13 @@ inline void allToAllCompress() {
 	MPI_Alltoallv(b, count, disp, MPI_INT, a, max, disp, MPI_INT, MPI_COMM_WORLD);// Troca os blocos entre processos
 
 	// a is compressed, uncompress to b
+	#pragma omp parallel for schedule(dynamic)
 	for (i=0; i<P; i++)
 		uncompress ( b+(i*blockSize), a+(i*blockSize), dataRecv[3*i], dataRecv[3*i+1], dataRecv[3*i+2] );
 	
 	// swap from b to a
 	for (i=0; i<P; i++) {
+		#pragma omp parallel for schedule(static)
 		for (j=0; j<blockHeight; j++) {
 			int OffsetDest = ( (j*M) + (i*blockWidth) ); // Calcula onde vai escrever
 			int OffsetSrc = ( (i*blockSize) + (j*blockWidth) ); // Calcula onde vai ler

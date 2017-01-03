@@ -27,7 +27,7 @@ def createInputImg (dim):
 	file.close()
 
 
-images = ["8"]#["512","1024","2048","4096","8192","16384"]
+images = ["16384"]#["512","1024","2048","4096","8192","16384"]
 processes = ["2"]#["1","2","4","8","16","32","64"]#,"40","64","80"]
 comunications = {"alltoall_one":"0"}#{"alltoall":"0","alltoall_swaps":"1","scatter":"2","alltoall_many":"3"}
 nreps = 1
@@ -51,6 +51,8 @@ if not os.path.exists(outFolder):
 for img in images:
 	if not os.path.exists(img):
 		createInputImg(img)
+
+sys.exit(0)
 
 f = open(tables,"w") 
 
